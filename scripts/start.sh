@@ -4,6 +4,9 @@
 #
 #   ./scripts/start.sh              first run installs and builds; later runs
 #                                   start immediately when nothing changed
+#   ./scripts/start.sh -p 9000      listen on another port (also PORT=9000)
+#   ./scripts/start.sh --host 0.0.0.0
+#                                   bind beyond loopback; see the warning below
 #   ./scripts/start.sh --rebuild    force reinstall and rebuild
 set -euo pipefail
 
@@ -20,16 +23,39 @@ port=${PORT:-8080}
 state_dir=${STATE_DIR:-$work_dir/state}
 force=0
 
-for arg in "$@"; do
-  case "$arg" in
-    --rebuild|-r) force=1 ;;
-    --help|-h) sed -n '2,7p' "${BASH_SOURCE[0]}" | cut -c3-; exit 0 ;;
-    *) printf 'unknown option: %s (try --help)\n' "$arg" >&2; exit 2 ;;
+log() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
+die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+usage() { sed -n '2,10p' "${BASH_SOURCE[0]}" | cut -c3-; }
+
+# A flag beats the matching environment variable, so `PORT=1 ... -p 2` listens on 2.
+while (( $# )); do
+  case "$1" in
+    -p|--port)
+      [[ -n "${2:-}" ]] || die "$1 requires a port number"
+      port=$2
+      shift 2
+      ;;
+    --port=*) port=${1#*=}; shift ;;
+    -H|--host)
+      [[ -n "${2:-}" ]] || die "$1 requires a host or address"
+      host=$2
+      shift 2
+      ;;
+    --host=*) host=${1#*=}; shift ;;
+    --rebuild|-r) force=1; shift ;;
+    --help|-h) usage; exit 0 ;;
+    *) printf 'unknown option: %s\n\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
-log() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
-die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+# Reject anything the kernel would refuse anyway, but with a clearer message.
+# Port 0 is excluded on purpose: the kernel picks a random port, and the banner
+# would then advertise a URL that nothing is listening on.
+[[ "$port" =~ ^[0-9]+$ ]] && (( port >= 1 && port <= 65535 )) \
+  || die "invalid port: $port (expected 1-65535)"
+if (( port < 1024 )) && (( EUID != 0 )); then
+  die "port $port needs root on most systems. Pick a port above 1023."
+fi
 
 version_ok() {
   local have=${1#v}
@@ -118,6 +144,13 @@ fi
 
 if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
   die "port $port is already in use. Stop the other process or rerun with PORT=<free-port>."
+fi
+
+if [[ "$host" != "127.0.0.1" && "$host" != "localhost" && "$host" != "::1" ]]; then
+  # /console/ and /v0/management/* have no auth of their own in v0.1: they can
+  # add and remove pooled Cursor credentials and reveal the gateway key.
+  log "WARNING: binding $host exposes /console/ and /v0/management/* with no authentication."
+  log "         Put an authenticating reverse proxy in front, or use the default 127.0.0.1."
 fi
 
 url="http://${host}:${port}"

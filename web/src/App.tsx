@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { addManagedAccount, getHealth, getManagedAccounts, probeManagedAccount, removeManagedAccount, runPrompt } from "./api";
+import { addManagedAccount, getGatewayKey, getHealth, getManagedAccounts, probeManagedAccount, removeManagedAccount, runPrompt } from "./api";
 import { go, hrefFor, readRoute, type Route } from "./nav";
 import { RailNav } from "./RailNav";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
@@ -171,6 +171,12 @@ const COPY = {
       workspaceTitle: "Local files",
       workspaceBody:
         "Grok Build and Claude Code edit files with their own local tools in your project directory. This gateway only runs the model. Cursor SDK uses an empty workspace, so the model may emit that absolute path. Use a relative path or your project path.",
+      keyLabel: "Gateway key",
+      keyReveal: "Show",
+      keyHide: "Hide",
+      keyHelp: "Clients authenticate with this key. Your Cursor keys stay in the gateway.",
+      keyByok: "BYOK mode: each client presents its own Cursor key.",
+      keyUnavailable: "Key unavailable. Read GATEWAY_ACCESS_KEY from the gateway environment.",
     },
     keyNeeded: "Paste a Cursor API key first.",
   },
@@ -325,6 +331,12 @@ const COPY = {
       workspaceTitle: "本地文件",
       workspaceBody:
         "Grok Build / Claude Code 改文件用的是它们自己的本机工具，工作区是你的项目目录。这个网关只提供模型推理。Cursor SDK 的 cwd 是空目录，所以模型有时会吐出网关绝对路径。写相对路径或你的项目路径就能改本地文件。",
+      keyLabel: "网关 Key",
+      keyReveal: "显示",
+      keyHide: "隐藏",
+      keyHelp: "客户端用这把 Key 认证。你导入的 Cursor Key 始终留在网关内。",
+      keyByok: "BYOK 模式：每个客户端提交自己的 Cursor Key。",
+      keyUnavailable: "读不到 Key，请查看网关环境变量 GATEWAY_ACCESS_KEY。",
     },
     keyNeeded: "先粘贴一把 Cursor Key。",
   },
@@ -353,6 +365,9 @@ export function App() {
   const [output, setOutput] = useState("");
   const [runState, setRunState] = useState<LoadState>("idle");
   const [recipe, setRecipe] = useState<RecipeName>("claude");
+  const [gatewayKey, setGatewayKey] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<"managed" | "byok">("managed");
+  const [keyRevealed, setKeyRevealed] = useState(false);
   const [copied, setCopied] = useState("");
   const t = COPY[language];
   const origin = window.location.origin;
@@ -381,6 +396,16 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    // A failure here only costs the placeholder; the rest of the console works.
+    void getGatewayKey()
+      .then((payload) => {
+        setGatewayKey(payload.gateway_access_key);
+        setAuthMode(payload.auth_mode);
+      })
+      .catch(() => setGatewayKey(null));
+  }, []);
+
+  useEffect(() => {
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
     document.title = `${t.product} · ${pageLabelFor(route.page, t)}`;
   }, [language, route.page, t]);
@@ -397,11 +422,13 @@ export function App() {
     return supported.join(" + ");
   }, [health]);
 
+  // Copy-ready recipes: substitute the live key so nothing has to be hand-edited.
+  const keyForSnippet = gatewayKey ?? "<gateway-key>";
   const snippets: Record<RecipeName, string> = {
-    claude: `ANTHROPIC_BASE_URL=${origin}\nANTHROPIC_AUTH_TOKEN=<gateway-key>\nANTHROPIC_MODEL=claude-sonnet-4-6\nclaude`,
-    grok: `[models]\ndefault = "cursor-gw"\n\n[model.cursor-gw]\nname = "cursor-sdk2api"\nbase_url = "${origin}/v1"\napi_key = "<gateway-key>"\nmodel = "grok-4.6"\napi_backend = "responses"\n\n# Isolated: GROK_HOME=/path/to/grok_home grok --model cursor-gw`,
-    openai: `from openai import OpenAI\nclient = OpenAI(base_url="${origin}/v1", api_key="<gateway-key>")`,
-    newapi: `Base URL: ${origin}\nAPI key: <gateway-key>\nAnthropic upstream: ${origin}\nOpenAI upstream: ${origin}/v1`,
+    claude: `ANTHROPIC_BASE_URL=${origin}\nANTHROPIC_AUTH_TOKEN=${keyForSnippet}\nANTHROPIC_MODEL=claude-sonnet-4-6\nclaude`,
+    grok: `[models]\ndefault = "cursor-gw"\n\n[model.cursor-gw]\nname = "cursor-sdk2api"\nbase_url = "${origin}/v1"\napi_key = "${keyForSnippet}"\nmodel = "grok-4.6"\napi_backend = "responses"\n\n# Isolated: GROK_HOME=/path/to/grok_home grok --model cursor-gw`,
+    openai: `from openai import OpenAI\nclient = OpenAI(base_url="${origin}/v1", api_key="${keyForSnippet}")`,
+    newapi: `Base URL: ${origin}\nAPI key: ${keyForSnippet}\nAnthropic upstream: ${origin}\nOpenAI upstream: ${origin}/v1`,
   };
   const clientRoutes = language === "zh"
     ? [
@@ -672,7 +699,7 @@ export function App() {
           />
         ) : null}
         {route.page === "connect" ? (
-          <ConnectPage t={t.connect} origin={origin} copied={copied} recipe={recipe} snippets={snippets} routes={clientRoutes} onCopy={copyValue} onRecipe={setRecipe} />
+          <ConnectPage t={t.connect} origin={origin} copied={copied} recipe={recipe} snippets={snippets} routes={clientRoutes} gatewayKey={gatewayKey} authMode={authMode} keyRevealed={keyRevealed} onRevealKey={setKeyRevealed} onCopy={copyValue} onRecipe={setRecipe} />
         ) : null}
       </main>
       <footer className="foot">

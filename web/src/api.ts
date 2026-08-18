@@ -1,4 +1,4 @@
-import type { AccountPayload, HealthPayload, ModelsPayload, Protocol } from "./types.js";
+import type { AccountPayload, GatewayKeyPayload, HealthPayload, ModelsPayload, Protocol } from "./types.js";
 
 export interface ManagementAccount {
   id: string;
@@ -23,6 +23,10 @@ export async function probeManagedAccount(id: string): Promise<{ models: ModelsP
     method: "GET",
     path: `/probe?id=${encodeURIComponent(id)}`,
   });
+}
+
+export async function getGatewayKey(): Promise<GatewayKeyPayload> {
+  return getJson<GatewayKeyPayload>("/v0/management/gateway-key");
 }
 
 export async function getManagedAccounts(): Promise<ManagementAccount[]> {

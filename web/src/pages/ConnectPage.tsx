@@ -18,6 +18,10 @@ export function ConnectPage({
   recipe,
   snippets,
   routes,
+  gatewayKey,
+  authMode,
+  keyRevealed,
+  onRevealKey,
   onCopy,
   onRecipe,
 }: {
@@ -33,12 +37,22 @@ export function ConnectPage({
     routeNote: string;
     workspaceTitle: string;
     workspaceBody: string;
+    keyLabel: string;
+    keyReveal: string;
+    keyHide: string;
+    keyHelp: string;
+    keyByok: string;
+    keyUnavailable: string;
   };
   origin: string;
   copied: string;
   recipe: RecipeName;
   snippets: Record<RecipeName, string>;
   routes: Array<{ client: string; endpoint: string; note: string }>;
+  gatewayKey: string | null;
+  authMode: "managed" | "byok";
+  keyRevealed: boolean;
+  onRevealKey: (next: boolean) => void;
   onCopy: (label: string, value: string) => void;
   onRecipe: (value: RecipeName) => void;
 }) {
@@ -50,6 +64,31 @@ export function ConnectPage({
           <p className="origin mono">{origin}</p>
         </div>
         <Button variant="secondary" size="sm" data-copied={copied === "origin" ? "true" : undefined} onClick={() => onCopy("origin", origin)}>{copied === "origin" ? t.copied : t.copy}</Button>
+      </div>
+      <div className="home-origin">
+        <div>
+          <p className="kicker">{t.keyLabel}</p>
+          <p className="origin mono">
+            {authMode === "byok"
+              ? t.keyByok
+              : gatewayKey
+                ? keyRevealed
+                  ? gatewayKey
+                  : `${gatewayKey.slice(0, 6)}${"•".repeat(12)}${gatewayKey.slice(-4)}`
+                : t.keyUnavailable}
+          </p>
+          <p className="note">{t.keyHelp}</p>
+        </div>
+        {authMode === "managed" && gatewayKey ? (
+          <div className="recipe-tools">
+            <Button variant="quiet" size="sm" onClick={() => onRevealKey(!keyRevealed)}>
+              {keyRevealed ? t.keyHide : t.keyReveal}
+            </Button>
+            <Button variant="secondary" size="sm" data-copied={copied === "key" ? "true" : undefined} onClick={() => onCopy("key", gatewayKey)}>
+              {copied === "key" ? t.copied : t.copy}
+            </Button>
+          </div>
+        ) : null}
       </div>
       <ul className="endpoints page-endpoints">
         <li><span>POST</span><code>/v1/messages</code></li>

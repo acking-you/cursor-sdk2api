@@ -52,4 +52,10 @@ export interface AccountPayload {
   reasons?: Record<string, string>;
 }
 
+export interface GatewayKeyPayload {
+  auth_mode: "managed" | "byok";
+  /** null in byok mode, where each client presents its own Cursor key. */
+  gateway_access_key: string | null;
+}
+
 export type Protocol = "messages" | "chat" | "responses";

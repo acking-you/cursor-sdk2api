@@ -259,6 +259,23 @@ export function createApp(input: {
         return;
       }
 
+      // The console renders copy-ready client recipes, which need the gateway
+      // key. This is the client-facing key, not an upstream Cursor credential,
+      // and it shares the loopback-only trust boundary of the other management
+      // routes.
+      if (path === "/v0/management/gateway-key" && method === "GET") {
+        sendJson(
+          res,
+          200,
+          {
+            auth_mode: config.authMode,
+            gateway_access_key: config.authMode === "managed" ? config.gatewayAccessKey ?? null : null,
+          },
+          requestId,
+        );
+        return;
+      }
+
       if (path === "/v0/management/accounts/probe" && method === "GET") {
         const id = new URL(req.url ?? "/", "http://localhost").searchParams.get("id")?.trim() ?? "";
         if (!id) throw invalidRequest("id is required");
